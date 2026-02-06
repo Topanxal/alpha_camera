@@ -72,5 +72,16 @@ ros2 launch alfa_robot_vision vision_system.launch.py
 *   `/scene_debug_image`: 显示 YOLO 检测结果和策略分配。
 *   `/servo_debug_image`: 显示伺服对准过程中的特征提取情况。
 
+## 文档索引 (Documentation)
+
+详细的开发文档和规划请参考 `docs/` 目录：
+
+*   **[VLA Roadmap](docs/vla_roadmap.md)**: 未来的视觉-语言-动作模型演进路线图。
+*   **[Development Plan](docs/develop_plan.md)**: 当前版本的开发计划与状态。
+*   **[Test Plan](docs/vision_test_plan.md)**: 视觉系统的测试用例与验证方法。
+*   **[Troubleshooting](docs/TROUBLESHOOTING.md)**: 常见问题排查（如 NumPy 冲突、TF 错误等）。
+*   **[TODO](docs/todo.md)**: 待办事项列表。
+*   **[Env Setup Notes](docs/env_setup_notes.md)**: 环境配置备忘录。
+
 ## 故障排除
-请参考 `TROUBLESHOOTING.md` 获取常见问题（如 NumPy 版本冲突、No detections 等）的解决方案。
+请参考 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) 获取常见问题（如 NumPy 版本冲突、No detections 等）的解决方案。
