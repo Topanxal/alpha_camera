@@ -3,31 +3,59 @@
 `alfa_robot_vision` 是 Alfa Robot 物流机器人的视觉处理模块，基于 ROS 2 Humble 开发。
 v2.0 版本采用了 **分层架构**，将全局场景分析与局部视觉伺服分离，以支持更复杂的物流任务（如分层抓取、侧拉/顶吸策略）。
 
-## 架构概览
+## 架构详解 (System Architecture)
 
-本模块包含两个核心节点：
+### 1. Scene Analyzer Node (`scene_analyzer`)
+**定位**: "大脑" (Decision Maker)
+*   **输入**: RGB-D 图像流 + 外部触发信号。
+*   **处理流程**:
+    1.  **YOLO Detection**: 识别所有可见箱子。
+    2.  **3D Projection**: 结合深度图计算箱子中心坐标 (Camera Frame)。
+    3.  **TF Transform**: 将坐标转换到 `base_link` 或 `map` 坐标系。
+    4.  **Strategy Allocation**:
+        *   若 `z > layer_height_threshold`: 判定为顶层，策略为 **SIDE_PULL (侧拉)**。
+        *   若 `z <= layer_height_threshold`: 判定为底层，策略为 **TOP_PICK (顶吸)**。
+*   **输出**: 包含所有目标箱子 ID、策略、位姿的列表。
 
-1.  **Scene Analyzer Node (`scene_analyzer`)**
-    *   **职责**：全局场景理解。
-    *   **功能**：
-        *   接收外部触发（Service）。
-        *   使用 YOLOv8 检测视野内所有箱子。
-        *   计算每个箱子的 3D 坐标。
-        *   基于高度（Z轴）将箱子分层（Top/Bottom）。
-        *   根据层级分配抓取策略（SIDE_PULL / TOP_PICK）。
-    *   **接口**：
-        *   Service: `analyze_scene` (logistics_interfaces/srv/AnalyzeScene)
+### 2. Visual Servo Node (`visual_servo`)
+**定位**: "小脑" (Action Controller)
+*   **输入**: RGB-D 图像流 + 模式切换指令。
+*   **模式逻辑**:
+    *   **FACE_ALIGN (侧面模式)**:
+        *   目标: 距离表面 20cm，且法向量平行于光轴。
+        *   算法: ROI 深度均值控制距离，法向量投影控制 Pitch/Yaw。
+    *   **TOP_ALIGN (顶面模式)**:
+        *   目标: 对准最平整的吸取区域 (Best Patch)。
+        *   算法: **Patch-based Grasping** (3x3 网格深度方差搜索)。
+*   **输出**: 实时的高频误差反馈 (`error_x`, `error_y`, `error_z`, `yaw_error`)。
 
-2.  **Visual Servo Node (`visual_servo`)**
-    *   **职责**：局部精细对准。
-    *   **功能**：
-        *   接收模式切换指令（Service）。
-        *   **FACE_ALIGN (侧面模式)**：计算箱子中心偏差和表面法向量夹角（Pitch/Yaw）。
-        *   **TOP_ALIGN (顶面模式)**：计算箱子边缘角度偏差（Yaw）和 XY 位移。
-        *   实时发布伺服反馈（Feedback）。
-    *   **接口**：
-        *   Service: `set_servo_mode` (logistics_interfaces/srv/SetServoMode)
-        *   Topic: `servo_feedback` (logistics_interfaces/msg/ServoFeedback)
+---
+
+## ROS 接口规范 (ROS Interfaces)
+
+### Topics
+| Topic Name | Type | Publisher/Subscriber | Description |
+| :--- | :--- | :--- | :--- |
+| `/head_camera/rgb/image_raw` | `sensor_msgs/Image` | Sub | RGB 图像输入 |
+| `/head_camera/depth/image_rect_raw` | `sensor_msgs/Image` | Sub | 深度图像输入 |
+| `/head_camera/camera_info` | `sensor_msgs/CameraInfo` | Sub | 相机内参 |
+| `/scene_debug_image` | `sensor_msgs/Image` | Pub | YOLO 检测与策略可视化 |
+| `/servo_debug_image` | `sensor_msgs/Image` | Pub | 伺服准星与 Patch 可视化 |
+| `/scene_markers` | `visualization_msgs/MarkerArray` | Pub | **[New]** Rviz 3D 可视化 (绿色=侧拉, 蓝色=顶吸) |
+| `/servo_feedback` | `logistics_interfaces/ServoFeedback` | Pub | 实时伺服误差反馈 |
+
+### Services
+| Service Name | Type | Description |
+| :--- | :--- | :--- |
+| `/analyze_scene` | `logistics_interfaces/AnalyzeScene` | 触发全局分析，返回所有箱子策略列表 |
+| `/set_servo_mode` | `logistics_interfaces/SetServoMode` | 切换伺服模式 (IDLE / FACE_ALIGN / TOP_ALIGN) |
+
+### TF Frames
+*   **`base_link`**: 机器人基座坐标系 (Target Frame)。
+*   **`head_camera_optical_frame`**: 相机光学坐标系 (Source Frame)。
+*   **`map`** (Optional): 全局地图坐标系 (用于多箱子持久化追踪)。
+
+---
 
 ## 环境依赖
 

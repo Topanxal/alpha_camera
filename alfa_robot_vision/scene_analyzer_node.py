@@ -9,6 +9,8 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import Pose, PoseStamped, Quaternion, Vector3
 from sensor_msgs.msg import Image, CameraInfo
+from visualization_msgs.msg import Marker, MarkerArray
+from std_msgs.msg import ColorRGBA
 from logistics_interfaces.srv import AnalyzeScene
 from logistics_interfaces.msg import BoxStrategy
 from .utils.yolo_wrapper import YoloWrapper
@@ -66,6 +68,7 @@ class SceneAnalyzerNode(Node):
         # Service & Publisher
         self.srv = self.create_service(AnalyzeScene, 'analyze_scene', self.handle_analyze_scene)
         self.debug_pub = self.create_publisher(Image, 'scene_debug_image', 10)
+        self.marker_pub = self.create_publisher(MarkerArray, 'scene_markers', 10)
         
         # Subscribers
         self.latest_rgb = None
@@ -197,6 +200,9 @@ class SceneAnalyzerNode(Node):
             # Debug Visualization
             if self.debug_mode:
                 self.publish_debug_image(cv_image, detections, debug_info)
+            
+            # Publish 3D Markers
+            self.publish_markers(strategies)
 
         except Exception as e:
             self.get_logger().error(f"Analysis Failed: {e}")
@@ -251,6 +257,74 @@ class SceneAnalyzerNode(Node):
         except Exception as e:
             self.get_logger().warn(f"TF Error: {e}")
             return None
+
+    def publish_markers(self, strategies):
+        marker_array = MarkerArray()
+        # Use Time(0) to avoid TF sync issues in Rviz
+        timestamp = rclpy.time.Time().to_msg() 
+        
+        # Clear old markers
+        delete_marker = Marker()
+        delete_marker.action = Marker.DELETEALL
+        marker_array.markers.append(delete_marker)
+
+        for i, strat in enumerate(strategies):
+            # 1. Cube Marker (Box)
+            marker = Marker()
+            marker.header.frame_id = self.target_frame
+            marker.header.stamp = timestamp
+            marker.ns = "boxes"
+            marker.id = i * 2
+            marker.type = Marker.CUBE
+            marker.action = Marker.ADD
+            
+            # Position
+            marker.pose = strat.approach_pose # Use approach pose as center for now
+            # To be more accurate, we should use the actual box center, 
+            # but approach_pose is derived from it.
+            
+            # Scale (Approximate box size, can be refined if we estimate dimensions)
+            marker.scale.x = 0.3 # 30cm box
+            marker.scale.y = 0.4
+            marker.scale.z = 0.2
+            
+            # Color
+            marker.color.a = 0.6 # Semi-transparent
+            if strat.strategy == "SIDE_PULL":
+                marker.color.r = 0.0
+                marker.color.g = 1.0
+                marker.color.b = 0.0 # Green
+            else:
+                marker.color.r = 0.0
+                marker.color.g = 0.0
+                marker.color.b = 1.0 # Blue
+                
+            marker_array.markers.append(marker)
+            
+            # 2. Text Marker (Info)
+            text_marker = Marker()
+            text_marker.header.frame_id = self.target_frame
+            text_marker.header.stamp = timestamp
+            text_marker.ns = "info"
+            text_marker.id = i * 2 + 1
+            text_marker.type = Marker.TEXT_VIEW_FACING
+            text_marker.action = Marker.ADD
+            
+            text_marker.pose.position = marker.pose.position
+            text_marker.pose.position.z += 0.2 # Above box
+            text_marker.pose.orientation.w = 1.0
+            
+            text_marker.scale.z = 0.05 # Text height
+            text_marker.color.r = 1.0
+            text_marker.color.g = 1.0
+            text_marker.color.b = 1.0
+            text_marker.color.a = 1.0
+            
+            text_marker.text = f"{strat.id}\n{strat.strategy}"
+            
+            marker_array.markers.append(text_marker)
+            
+        self.marker_pub.publish(marker_array)
 
     def publish_debug_image(self, cv_image, detections, debug_info):
         debug_img = cv_image.copy()
