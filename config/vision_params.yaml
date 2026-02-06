@@ -1,0 +1,13 @@
+scene_analyzer:
+  ros__parameters:
+    model_path: "box_best.pt"
+    target_frame: "head_camera_optical_frame"
+    camera_optical_frame: "head_camera_optical_frame"
+    confidence_threshold: 0.5
+    debug_mode: true
+    layer_height_threshold: 1.2
+
+visual_servo:
+  ros__parameters:
+    debug_mode: true
+    target_frame: "base_link"
